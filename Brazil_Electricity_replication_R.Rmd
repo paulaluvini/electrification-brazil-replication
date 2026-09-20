@@ -1,0 +1,531 @@
+---
+title: "Brazil Electricity Replication in R"
+author: "Translated from Brazil_Electricity_Regressions_do_file.do"
+output: html_document
+---
+
+```{r setup}
+# This R Markdown file translates the Stata do-file:
+# Brazil_Electricity_Regressions_do_file.do
+
+library(haven)
+library(fixest)
+
+PROJECT_DIR <- getwd()
+
+DATA_DIR <- file.path(PROJECT_DIR, "data")
+OUT <- file.path(PROJECT_DIR, "output")
+dir.create(OUT, showWarnings = FALSE)
+
+# Read both stata files.First one is the main dataset for panel data
+BRAZIL_DTA <- file.path(DATA_DIR, "Brazil_Electricity_data.dta")
+# Topographic file used for Table 1 and 4
+TOPO_DTA <- file.path(DATA_DIR, "topographic_data.dta")
+
+#standardized county identifier
+ID <- "AMC60ID"
+TIME <- "decade"
+
+#regressions in stata are weighted by county area
+WEIGHT <- "areakm2_"
+CLUSTER <- "AMC60ID"
+
+options(width = 140)
+```
+
+# Load and prepare the Brazil panel
+
+```{r load-data}
+# Load the DTA into R
+df <- as.data.frame(read_dta(BRAZIL_DTA))
+# Sort by county and time. matters because next we create leads and lags. For example, to know the “next decade” value of HDI, the data must be correctly ordered within each county.
+df <- df[order(df[[ID]], df[[TIME]]), ]
+row.names(df) <- NULL
+
+# The Stata script uses some *_popave names that are not present in this .dta.
+# These aliases map the do-file names to the available variables.
+aliases <- c(
+  HDI_popave = "HDI",
+  HDIlongevity_popave = "HDIlongevity",
+  HDIrenda_popav = "HDIincome",
+  HDIeducation_popave = "HDIeducation",
+  yearsschool_popave = "yearsschool",
+  renda_pc = "grossincome_pc",
+  life_expect_popave = "live_expect",
+  life_expect = "live_expect",
+  poverty_popave = "poverty",
+  Theil_popave = "Theil",
+  infant_mort_popave = "infant_mort",
+  l4edu_popave = "l4edu"
+)
+for (new_name in names(aliases)) {
+  old_name <- aliases[[new_name]]
+  if (!(new_name %in% names(df)) && old_name %in% names(df)) {
+    df[[new_name]] <- df[[old_name]]
+  }
+}
+
+# custom function to create a lead variable within each county
+lead_by_id <- function(x, id) {
+  out <- rep(NA_real_, length(x))
+  for (ii in split(seq_along(x), id)) {
+    if (length(ii) > 1) out[ii[-length(ii)]] <- x[ii[-1]]
+  }
+  out
+}
+
+lag_by_id <- function(x, id) {
+  out <- rep(NA_real_, length(x))
+  for (ii in split(seq_along(x), id)) {
+    if (length(ii) > 1) out[ii[-1]] <- x[ii[-length(ii)]]
+  }
+  out
+}
+
+lead_lag_vars <- c(
+  "pct_elect", "totalrescap_house", "HDI_popave", "HDI",
+  "HDIlongevity", "HDIincome", "HDIeducation", "infant_mort",
+  "grossincome_pc", "poverty", "econ_active_pct", "employed_pct",
+  "urbanemployed_pct", "ruralemployed_pct", "illiteracy", "l4edu",
+  "yearsschool", "hc_pc", "migration", "life_expect", "live_expect",
+  "popdens", "urbanpctpop", names(aliases),
+  "runningwater_pcthouses", "san_pcthouses", "carspcthouses"
+)
+for (v in unique(lead_lag_vars)) {
+  if (v %in% names(df)) {
+    df[[paste0("F_", v)]] <- lead_by_id(df[[v]], df[[ID]])
+    df[[paste0("L_", v)]] <- lag_by_id(df[[v]], df[[ID]])
+  }
+}
+
+# Stata renames electricity_infrastructure to elect for Table 10.
+df$elect <- df$electricity_infrastructure
+# check shape of the panel data.
+# The dataframe df has information about each Brazilian county (AMC60ID) by decade
+dim(df)
+head(df[, c("AMC60ID", "decade", "electricity_infrastructure", "matlab_instrument", "HDI", "totalrescap_house")])
+```
+
+```{r}
+head(df)
+```
+
+
+# Helper functions
+
+```{r helpers}
+# This function finds all variables in the dataset that start with a given prefix, as Stata uses shortcuts but R does not follow the same logic.
+expand_prefix <- function(prefix, data = df) {
+  cols <- names(data)[startsWith(names(data), prefix)]
+  suffix_num <- function(x) {
+    z <- sub(prefix, "", x, fixed = TRUE)
+    n <- suppressWarnings(as.numeric(gsub("[^0-9]", "", z)))
+    ifelse(is.na(n), Inf, n)
+  }
+  cols[order(suffix_num(cols), cols)]
+}
+
+YEAR <- expand_prefix("yeardum")
+JUNGLE_YEAR <- expand_prefix("jungleyr")
+WATER_YEAR <- expand_prefix("wateryr")
+WSLOPE_YEAR <- expand_prefix("wslopeyear")
+HYDROHAT_YEAR <- c(
+  expand_prefix("hydrohat_yeardum"),
+  expand_prefix("hydrohat2_yeardum"),
+  expand_prefix("hydrohat3_yeardum"),
+  expand_prefix("hydrohat4_yeardum")
+)
+
+# adds significance stars to regression coefficients
+stars <- function(p) {
+  ifelse(is.na(p), "",
+    ifelse(p < 0.01, "***",
+      ifelse(p < 0.05, "**",
+        ifelse(p < 0.10, "*", ""))))
+}
+
+# The following functions are to work with feols()
+rhs <- function(vars) {
+  vars <- vars[vars %in% names(df)]
+  if (length(vars) == 0) "1" else paste(vars, collapse = " + ")
+}
+
+subset_formula <- function(condition) {
+  if (is.null(condition)) NULL else as.formula(paste0("~", condition))
+}
+
+tidy_fixest <- function(model, label, type, dep, first_stage_F = NA_real_) {
+  ct <- coeftable(model)
+  coef_names <- sub("^fit_", "", rownames(ct))
+  list(
+    label = label,
+    type = type,
+    dep = dep,
+    names = coef_names,
+    coef = as.numeric(ct[, "Estimate"]),
+    se = as.numeric(ct[, "Std. Error"]),
+    t = as.numeric(ct[, "t value"]),
+    p = as.numeric(ct[, "Pr(>|t|)"]),
+    n = nobs(model),
+    r2 = as.numeric(fitstat(model, "r2")[[1]]),
+    first_stage_F = first_stage_F,
+    model = model
+  )
+}
+
+fit_wls <- function(data, y, xcols, fe = NULL, condition = NULL, label = y) {
+  fml <- if (is.null(fe)) {
+    as.formula(paste(y, "~", rhs(xcols)))
+  } else {
+    as.formula(paste(y, "~", rhs(xcols), "|", fe))
+  }
+  model <- feols(
+    fml,
+    data = data,
+    weights = as.formula(paste0("~", WEIGHT)),
+    cluster = as.formula(paste0("~", CLUSTER)),
+    subset = subset_formula(condition),
+    notes = FALSE
+  )
+  tidy_fixest(model, label, ifelse(is.null(fe), "WLS", "WLS-FE"), y)
+}
+
+fit_iv <- function(data, y, endog, instrument, exog_cols,
+                   fe = NULL, condition = NULL, label = y) {
+  fe_part <- ifelse(is.null(fe), "0", fe)
+  fml <- as.formula(
+    paste(y, "~", rhs(exog_cols), "|", fe_part, "|", endog, "~", instrument)
+  )
+  model <- feols(
+    fml,
+    data = data,
+    weights = as.formula(paste0("~", WEIGHT)),
+    cluster = as.formula(paste0("~", CLUSTER)),
+    subset = subset_formula(condition),
+    notes = FALSE
+  )
+  first <- fit_wls(
+    data, endog, c(instrument, exog_cols),
+    fe = fe, condition = condition, label = paste("First stage:", endog)
+  )
+  inst_pos <- match(instrument, first$names)
+  first_f <- ifelse(is.na(inst_pos), NA_real_, first$t[inst_pos]^2)
+  tidy_fixest(model, label, ifelse(is.null(fe), "2SLS", "2SLS-FE"), y, first_f)
+}
+
+rows_for <- function(models, keep) {
+  rows <- lapply(models, function(m) {
+    row <- data.frame(
+      model = m$label, type = m$type, dep = m$dep, N = m$n, R2 = m$r2,
+      First_stage_F = ifelse(is.null(m$first_stage_F), NA_real_, m$first_stage_F),
+      stringsAsFactors = FALSE
+    )
+    for (k in keep) {
+      pos <- match(k, m$names)
+      if (is.na(pos)) {
+        row[[k]] <- ""
+        row[[paste0(k, "_se")]] <- ""
+      } else {
+        row[[k]] <- paste0(sprintf("%.3f", m$coef[pos]), stars(m$p[pos]))
+        row[[paste0(k, "_se")]] <- paste0("(", sprintf("%.3f", m$se[pos]), ")")
+      }
+    }
+    row
+  })
+  do.call(rbind, rows)
+}
+
+# to save the tables in the oUT folder
+save_table <- function(tab, filename) {
+  path <- file.path(OUT, filename)
+  write.csv(tab, path, row.names = FALSE)
+  message("Wrote ", path)
+  tab
+}
+```
+
+# Table 2: summary statistics
+
+```{r table-2}
+summary_vars <- c(
+  "electricity_infrastructure", "F_pct_elect", "matlab_instrument",
+  "popdens",
+  "F_totalrescap_house", "F_HDI_popave", "F_HDIlongevity_popave",
+  "F_HDIrenda_popav", "F_HDIeducation_popave", "F_econ_active_pct",
+  "F_employed_pct", "F_urbanemployed_pct", "F_ruralemployed_pct",
+  "F_yearsschool_popave", "F_illiteracy", "F_renda_pc", "F_hc_pc",
+  "F_migration", "F_life_expect_popave", "F_popdens", "F_urbanpctpop",
+  "F_poverty_popave", "F_Theil_popave", "F_infant_mort_popave",
+  "F_l4edu_popave", "F_runningwater_pcthouses", "F_san_pcthouses",
+  "F_carspcthouses", "landslope"
+)
+summary_vars <- summary_vars[summary_vars %in% names(df)]
+d2 <- df[df$sample == 1, summary_vars, drop = FALSE]
+table2 <- data.frame(
+  variable = names(d2),
+  count = sapply(d2, function(x) sum(!is.na(x))),
+  mean = sapply(d2, function(x) mean(x, na.rm = TRUE)),
+  sd = sapply(d2, function(x) sd(x, na.rm = TRUE)),
+  min = sapply(d2, function(x) min(x, na.rm = TRUE)),
+  max = sapply(d2, function(x) max(x, na.rm = TRUE)),
+  row.names = NULL
+)
+save_table(table2, "table2_summary_statistics.csv")
+table2
+```
+
+```{r}
+table2_view <- table2
+table2_view[, sapply(table2_view, is.numeric)] <- round(
+  table2_view[, sapply(table2_view, is.numeric)],2)
+
+View(table2_view)
+```
+
+```{r}
+View(df[, c("AMC60ID", "decade", "HDI", "HDIlongevity", "HDIincome", "HDIeducation")])
+```
+
+
+
+# Table 3: first-stage regressions
+
+```{r table-3}
+table3_models <- list(
+  fit_wls(df, "electricity_infrastructure",
+          c("matlab_instrument", YEAR),
+          condition = "sample == 1", label = "OLS + year FE"),
+  fit_wls(df, "electricity_infrastructure",
+          c("matlab_instrument", YEAR),
+          fe = ID, condition = "sample == 1", label = "AMC FE + year FE"),
+  fit_wls(df, "electricity_infrastructure",
+          c("matlab_instrument", YEAR, JUNGLE_YEAR),
+          fe = ID, condition = "sample == 1", label = "AMC FE + jungle-year")
+)
+table3 <- rows_for(table3_models, "matlab_instrument")
+save_table(table3, "table3_first_stage.csv")
+table3
+```
+
+# Table 5: lagged development does not predict the instrument
+
+```{r table-5}
+table5_models <- list(
+  fit_wls(df, "matlab_instrument", c("L_totalrescap_house", YEAR),
+          fe = ID, label = "Lag totalrescap_house"),
+  fit_wls(df, "matlab_instrument", c("L_HDI", YEAR),
+          fe = ID, label = "Lag HDI")
+)
+table5 <- rows_for(table5_models, c("L_totalrescap_house", "L_HDI"))
+save_table(table5, "table5_balance_checks.csv")
+table5
+```
+
+# Tables 6 and 7: main OLS, FE, and IV specifications
+
+```{r tables-6-7}
+main_tables <- list()
+for (outcome in c("totalrescap_house", "HDI_popave")) {
+  y <- paste0("F_", outcome)
+  models <- list(
+    fit_wls(df, y, c("electricity_infrastructure", YEAR),
+            label = paste(outcome, "OLS")),
+    fit_wls(df, y, c("electricity_infrastructure", YEAR),
+            fe = ID, label = paste(outcome, "FE")),
+    fit_wls(df, y, c("electricity_infrastructure", YEAR, JUNGLE_YEAR),
+            fe = ID, label = paste(outcome, "FE + jungle-year")),
+    fit_iv(df, y, "electricity_infrastructure", "matlab_instrument", YEAR,
+           label = paste(outcome, "IV")),
+    fit_iv(df, y, "electricity_infrastructure", "matlab_instrument", YEAR,
+           fe = ID, label = paste(outcome, "IV FE")),
+    fit_iv(df, y, "electricity_infrastructure", "matlab_instrument",
+           c(JUNGLE_YEAR, YEAR), fe = ID,
+           label = paste(outcome, "IV FE + jungle-year"))
+  )
+  tab <- rows_for(models, "electricity_infrastructure")
+  save_table(tab, paste0("tables6_7_", outcome, ".csv"))
+  main_tables[[outcome]] <- tab
+}
+main_tables
+```
+
+# Table 8: infrastructure controls
+
+```{r table-8}
+cars_models <- list(
+  fit_wls(df, "carspcthouses", c("landslopetrend", "watertrend", YEAR),
+          label = "Cars cross-section"),
+  fit_wls(df, "carspcthouses", c("landslopetrend", "watertrend", YEAR),
+          fe = ID, label = "Cars FE")
+)
+table8_c1c2 <- rows_for(cars_models, c("landslopetrend", "watertrend"))
+save_table(table8_c1c2, "table8_columns1_2_cars.csv")
+
+table8_models <- list()
+for (outcome in c("totalrescap_house", "HDI")) {
+  table8_models[[outcome]] <- fit_iv(
+    df, paste0("F_", outcome), "electricity_infrastructure", "matlab_instrument",
+    c("runningwater_pcthouses", "san_pcthouses", "watertrend", "landslopetrend",
+      JUNGLE_YEAR, YEAR),
+    fe = ID, condition = "sample == 1",
+    label = paste(outcome, "IV FE controls")
+  )
+}
+table8_c3c4 <- rows_for(table8_models,
+                        c("electricity_infrastructure", "runningwater_pcthouses",
+                          "san_pcthouses", "carspcthouses"))
+save_table(table8_c3c4, "table8_columns3_4_controls.csv")
+list(table8_c1c2, table8_c3c4)
+```
+
+# Table 9: alternate treatment and instrument
+
+```{r table-9}
+table9_models <- list(
+  fit_iv(df, "HDI", "pct_elect", "matlab_instrument", YEAR,
+         fe = ID, label = "HDI on pct_elect"),
+  fit_iv(df, "F_HDI", "electricity_infrastructure", "US_matlab_instrument", YEAR,
+         fe = ID, label = "F_HDI, US instrument"),
+  fit_iv(df, "totalrescap_house", "pct_elect", "matlab_instrument", YEAR,
+         fe = ID, label = "Income on pct_elect"),
+  fit_iv(df, "F_totalrescap_house", "electricity_infrastructure", "US_matlab_instrument", YEAR,
+         fe = ID, label = "F_income, US instrument")
+)
+table9 <- rows_for(table9_models, c("pct_elect", "electricity_infrastructure"))
+save_table(table9, "table9_alternate_specs.csv")
+table9
+```
+
+# Table 10: robustness through the Stata `stop`
+
+```{r table-10}
+robustness_specs <- list(
+  "water_budget" = c("water_budget", YEAR),
+  "wslope_budget" = c("wslope_budget", YEAR),
+  "j_budget" = c("j_budget", YEAR),
+  "water_budget + j_budget" = c("water_budget", "j_budget", YEAR),
+  "j_budget + wslope_budget" = c("j_budget", "wslope_budget", YEAR),
+  "wslope_budget + water_budget" = c("wslope_budget", "water_budget", YEAR),
+  "all budgets" = c("j_budget", "wslope_budget", "water_budget", YEAR),
+  "water-year" = c(WATER_YEAR, YEAR),
+  "jungle-year" = c(JUNGLE_YEAR, YEAR),
+  "slope-year" = c(WSLOPE_YEAR, YEAR),
+  "water-year + jungle-year" = c(WATER_YEAR, JUNGLE_YEAR, YEAR),
+  "jungle-year + slope-year" = c(JUNGLE_YEAR, WSLOPE_YEAR, YEAR),
+  "slope-year + water-year" = c(WSLOPE_YEAR, WATER_YEAR, YEAR),
+  "slope-year + jungle-year + water-year" = c(WSLOPE_YEAR, JUNGLE_YEAR, WATER_YEAR, YEAR),
+  "hydrohat polynomial-year" = c(HYDROHAT_YEAR, YEAR)
+)
+
+for (outcome in c("HDI", "totalrescap_house")) {
+  models <- list()
+  for (nm in names(robustness_specs)) {
+    models[[nm]] <- fit_iv(
+      df, paste0("F_", outcome), "elect", "matlab_instrument",
+      robustness_specs[[nm]], fe = ID,
+      label = paste(outcome, nm, sep = ": ")
+    )
+  }
+  tab <- rows_for(models, "elect")
+  save_table(tab, paste0("table10_robustness_", outcome, ".csv"))
+  print(tab)
+}
+```
+
+# Optional post-`stop` appendix tables 11-14
+
+The original Stata do-file stops after Table 10. The code below translates the remaining
+appendix/mechanism tables that appear after `stop`.
+
+```{r appendix-tables}
+appendix_groups <- list(
+  table11_components = c("HDIlongevity", "HDIincome", "HDIeducation",
+                         "infant_mort", "grossincome_pc", "poverty"),
+  table12_employment = c("econ_active_pct", "employed_pct",
+                         "urbanemployed_pct", "ruralemployed_pct"),
+  table13_human_capital = c("illiteracy", "l4edu", "yearsschool", "hc_pc"),
+  table14_population = c("migration", "live_expect", "popdens", "urbanpctpop")
+)
+
+appendix_tables <- list()
+for (tab_name in names(appendix_groups)) {
+  models <- list()
+  for (v in appendix_groups[[tab_name]]) {
+    y <- paste0("F_", v)
+    if (!(y %in% names(df))) next
+    models[[paste0(v, "_FE")]] <- fit_wls(
+      df, y, c("electricity_infrastructure", YEAR, JUNGLE_YEAR),
+      fe = ID, condition = "sample == 1", label = paste(v, "FE")
+    )
+    models[[paste0(v, "_IV")]] <- fit_iv(
+      df, y, "electricity_infrastructure", "matlab_instrument",
+      c(JUNGLE_YEAR, YEAR),
+      fe = ID, condition = "sample == 1", label = paste(v, "IV FE")
+    )
+  }
+  tab <- rows_for(models, "electricity_infrastructure")
+  save_table(tab, paste0(tab_name, ".csv"))
+  appendix_tables[[tab_name]] <- tab
+  print(tab)
+}
+```
+
+# Tables 1 and 4: topographic data
+
+```{r topo-tables}
+topo <- as.data.frame(read_dta(TOPO_DTA))
+
+# Table 1: probit for hydropower geographic cost parameters.
+topo1960 <- topo[topo$year == 1960, ]
+topo1960 <- topo1960[complete.cases(topo1960[, c("hydro", "Amazon", "waterdum",
+                                                 "lnfa_max", "ave_slope_corrected",
+                                                 "max_slope_corrected")]), ]
+probit1 <- glm(
+  hydro ~ Amazon + waterdum + lnfa_max + ave_slope_corrected + max_slope_corrected,
+  data = topo1960,
+  family = binomial(link = "probit")
+)
+table1 <- data.frame(
+  variable = names(coef(probit1)),
+  coef = coef(probit1),
+  se = sqrt(diag(vcov(probit1))),
+  z = coef(probit1) / sqrt(diag(vcov(probit1))),
+  p = 2 * pnorm(abs(coef(probit1) / sqrt(diag(vcov(probit1)))), lower.tail = FALSE),
+  row.names = NULL
+)
+save_table(table1, "table1_topographic_probit.csv")
+
+# Table 4: Spearman rank correlations by year and region.
+rows <- list()
+idx <- 1
+for (yr in sort(unique(topo$year))) {
+  for (rg in sort(unique(topo$region))) {
+    g <- topo[topo$year == yr & topo$region == rg, ]
+    for (rhs in c("rank_popdens", "rank_pibpc")) {
+      sub <- g[complete.cases(g[, c("rank_generation", rhs)]), c("rank_generation", rhs)]
+      if (nrow(sub) >= 3) {
+        ct <- suppressWarnings(cor.test(sub$rank_generation, sub[[rhs]], method = "spearman"))
+        rows[[idx]] <- data.frame(
+          year = yr, region = rg, comparison = rhs,
+          rho = unname(ct$estimate), p = ct$p.value, N = nrow(sub)
+        )
+        idx <- idx + 1
+      }
+    }
+  }
+}
+table4 <- do.call(rbind, rows)
+save_table(table4, "table4_spearman_rank_correlations.csv")
+
+list(table1 = table1, table4_head = head(table4))
+```
+
+# Notes
+
+This R translation follows the logic of the Stata do-file: area weights, panel
+leads/lags, county fixed effects, year dummies, IV/2SLS, and clustered standard
+errors by `AMC60ID`. Regressions are estimated with `fixest::feols()`, which
+replaces Stata's `reg`, `areg`, `ivreg2`, and `xtivreg2` commands.
+
+Small numerical differences from Stata can still occur because Stata and `fixest`
+use their own finite-sample and collinearity conventions.
