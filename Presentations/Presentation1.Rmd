@@ -1,0 +1,77 @@
+---
+title: "Development effects of electrification in Brazil"
+subtitle: "Motivation, data, and descriptive statistics: Replication of *Lipscomb et al (2013)*"
+author: "Paula Luvini & Rodrigo Lugo"
+date: "2026-09-24"
+output: 
+  beamer_presentation:
+    theme: "Madrid"
+    colortheme: "beaver"
+    fonttheme: "structurebold"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+library(gt)
+library(dplyr)
+```
+
+## Motivation and prior literature
+
+The authors note a renewed interest of funneling development funds to large-scale infrastructure projects, despite little causal evidence to their effects.
+
+- The key empirical challenge: infrastructure enlargement happens in a **planned** manner, leading to endogeneity in the form of *reverse causality* and *program placement bias*.
+
+There is overall little discussion in the paper regarding prior literature.
+
+- Previous studies have looked at irrigation dams, highways, and railroads -> **gap #1**: electrification infrastructure.
+- Literature has focused on the *macro growth effects* of infrastructure -> **gap #2**: development at a micro-level as DV.
+
+## Instrumental variable research design
+
+Given the endogeneity between actual infrastructure development and development outcomes, a simple OLS regression would not hold.
+
+- Instead, an instrumental variable approach is more appropriate.
+
+(here a simple DAG of intrument, IV, DV, and confounders)
+
+## Data
+
+The paper uses three main data sources to construct a county-level panel dataset (1960-2000) that includes the following:
+
+\begin{alertblock}{Historical electricity infrastructure}
+This data had to be constructed by the authors through data provided by regional electricity companies (feasibility studies, inventories, maps).
+\end{alertblock}
+
+\begin{alertblock}{Predicted electricity infrastructure}
+The authors construct a model that uses national budget data and GIS (topographic data). Some assumptions are benchmarked against inventory data of existing electricity infrastructure.
+\end{alertblock}
+
+\begin{alertblock}{Development indicators and confounders}
+Census data from the Brazilian Institute of Statistics and Geography (IBGE) and aggregations from census and other surveys by Brazilian Institute for Applied Economic Research (IPEA).
+\end{alertblock}
+
+## Summary statistics
+
+```{r cars, echo = FALSE}
+df <- read.csv("../output/table2_summary_statistics.csv")
+
+# Changing variable names to match table 2 in paper
+variable_names <- c("Electricity", "Percent electrified", "Modeled electricity instrument", "Population density", "Average value of housing (thousands)", "Human development indicator (index)", "HDI longevity", "HDI salaries", "HDI education", "Percent economically active", "Percent employed", "Urban employment", "Rural employment", "Years of schooling", "Illiteracy", "Salaries per capita", "Human capital per capita", "New migrants in past five years", "Life expectancy", "Population density", "Percent of population in urban areas", "Poverty", "Theil index", "Infant mortality", "Less than four years of education", "Percent of households with running water", "Percent of households with sanitation", "Percent of households with cars", "Landslope")
+
+df <- df |>
+  mutate(variable = variable_names)
+
+gt(df) |>
+  #tab_header(
+   # title = "Summary statistics"
+    #) |>
+  fmt_number(
+    decimals = 2
+  ) |>
+  tab_options(
+    table.font.size = 8
+  )
+
+```
