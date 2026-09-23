@@ -32,9 +32,9 @@ There is overall little discussion in the paper regarding prior literature.
 
 ## Instrumental variable research design
 
-Given the endogeneity between actual infrastructure development and development outcomes, a simple OLS regression would not hold.
+Given the endogeneity between infrastructure development and development outcomes, a simple OLS regression would not hold.
 
-- Instead, an instrumental variable approach is more appropriate.
+- Instead, an instrumental variable approach is more appropriate. Therefore, the authors built an IV of *predicted electricity infrastructure*, based on the geographical suitability of hydropower dams.
 
 ```{r, fig.width=6, fig.height=4, out.width="80%", out.height="50%", fig.align = "center", echo = FALSE}
 coord_dag <- list(
