@@ -1,11 +1,11 @@
 ---
 title: "Development effects of electrification in Brazil"
 subtitle: "Motivation, data, and descriptive statistics: Replication of *Lipscomb et al (2013)*"
-author: "Paula Luvini & Rodrigo Lugo"
+author: "Paula Luvini, Rodrigo Lugo"
 date: "2026-09-24"
 output: 
   beamer_presentation:
-    theme: "Madrid"
+    theme: "Copenhagen"
     colortheme: "beaver"
     fonttheme: "structurebold"
 ---
@@ -15,6 +15,8 @@ knitr::opts_chunk$set(echo = FALSE)
 library(knitr)
 library(gt)
 library(dplyr)
+library(ggdag)
+library(ggplot2)
 ```
 
 ## Motivation and prior literature
@@ -34,7 +36,34 @@ Given the endogeneity between actual infrastructure development and development 
 
 - Instead, an instrumental variable approach is more appropriate.
 
-(here a simple DAG of intrument, IV, DV, and confounders)
+```{r, fig.width=6, fig.height=4, out.width="80%", out.height="50%", fig.align = "center", echo = FALSE}
+coord_dag <- list(
+  x = c(IV = 0.5, X = 1.5, u = 2, y = 2.5),
+  y = c(IV = 0, X = 0, u = 0.3, y = 0)
+)
+
+dag_iv <- ggdag::dagify(X ~ IV,
+                         y ~ X,
+                         X ~ u,
+                         y ~ u,
+                         coords = coord_dag, 
+                        labels = c(
+    IV = "Predicted 
+    electrification",
+    X  = "Electrification",
+    u  = "Confounders",
+    y  = "Development
+    outcomes"
+  ))
+
+ggdag::ggdag(dag_iv, node_size = 20) +
+  ggdag::geom_dag_label_repel(
+    ggplot2::aes(label = label),
+    direction = "x",
+    seed = 1) +
+  theme_void() 
+
+```
 
 ## Data
 
@@ -52,9 +81,9 @@ The authors construct a model that uses national budget data and GIS (topographi
 Census data from the Brazilian Institute of Statistics and Geography (IBGE) and aggregations from census and other surveys by Brazilian Institute for Applied Economic Research (IPEA).
 \end{alertblock}
 
-## Summary statistics
+## Summary statistics (1/2)
 
-```{r cars, echo = FALSE}
+```{r, echo = FALSE}
 df <- read.csv("../output/table2_summary_statistics.csv")
 
 # Changing variable names to match table 2 in paper
@@ -63,15 +92,79 @@ variable_names <- c("Electricity", "Percent electrified", "Modeled electricity i
 df <- df |>
   mutate(variable = variable_names)
 
-gt(df) |>
-  #tab_header(
-   # title = "Summary statistics"
-    #) |>
+df |> 
+  dplyr::slice(1:17) |>
+  gt(rowname_col = "variable") |> 
   fmt_number(
-    decimals = 2
-  ) |>
+    decimals = 2) |>
   tab_options(
-    table.font.size = 8
+    table.font.size = 7) |>
+  tab_row_group(
+    label = "Measures of demand",
+    rows = c("Population density")
+  ) |>
+  tab_row_group(
+    label = "Summary measures of development",
+    rows = c("Average value of housing (thousands)", "Human development indicator (index)")
+  ) |>
+  tab_row_group(
+    label = "HDI components",
+    rows = c("HDI longevity", "HDI salaries", "HDI education")
+  ) |>
+  tab_row_group(
+    label = "Employment", 
+    rows = c("Percent economically active", "Percent employed", "Urban employment", "Rural employment")
+  ) |>
+  tab_row_group(
+    label = "Human capital",
+    rows = c("Years of schooling", "Illiteracy", "Salaries per capita", "Human capital per capita")
+  ) |>
+  row_group_order(groups = c(NA, "Measures of demand", "Summary measures of development", "HDI components", "Employment", "Human capital"))  |>
+  tab_style(
+    style = list(
+      cell_fill(color = "gray65"),
+      cell_text(size = "larger")
+    ),
+    locations = cells_row_groups(groups = c("Measures of demand", "Summary measures of development", "HDI components", "Employment", "Human capital"))
   )
-
 ```
+
+## Summary statistics (1/2)
+
+```{r, echo = FALSE}
+df |> 
+  dplyr::slice(18:29) |>
+  gt(rowname_col = "variable") |> 
+  fmt_number(
+    decimals = 2) |>
+  tab_options(
+    table.font.size = 7) |>
+  tab_row_group(
+    label = "Population changes",
+    rows = c("New migrants in past five years", "Life expectancy", "Population density", "Percent of population in urban areas")
+  ) |>
+  tab_row_group(
+    label = "Poverty and inequality",
+    rows = c("Poverty", "Theil index", "Infant mortality", "Less than four years of education")
+  ) |>
+  tab_row_group(
+    label = "Other infrastructure",
+    rows = c("Percent of households with running water", "Percent of households with sanitation", "Percent of households with cars")
+  ) |>
+  tab_row_group(
+    label = "Geography", 
+    rows = "Landslope"
+  ) |>
+  row_group_order(groups = c("Population changes", "Poverty and inequality", "Other infrastructure", "Geography"))  |>
+  tab_style(
+    style = list(
+      cell_fill(color = "gray65"),
+      cell_text(size = "larger")
+    ),
+    locations = cells_row_groups(groups = c("Population changes", "Poverty and inequality", "Other infrastructure", "Geography"))
+  )
+```
+
+**Note**: variables for *GDP per capita* and *Industrial GDP per capita* were not replicated, due to them missing from the replication files. 
+
+- These variables are not used at any stage of analysis, so not a big issue.
