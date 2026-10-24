@@ -1,0 +1,54 @@
+---
+title: "Development effects of electrification in Brazil"
+subtitle: " Identification method and replication of main results of *Lipscomb et al (2013)*"
+author: "Paula Luvini, Rodrigo Lugo"
+date: "2026-10-29"
+output: 
+  beamer_presentation:
+    theme: "Copenhagen"
+    colortheme: "beaver"
+    fonttheme: "structurebold"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(knitr)
+library(gt)
+library(dplyr)
+library(ggdag)
+library(ggplot2)
+```
+
+## Research design: ideal benchmark vs. the paper
+
+- **Ideal design**: a lottery decides which feasible areas get the grid now and which wait ten years (cluster-randomized for spillovers).
+- **The paper**: county and decade FE-IV (2SLS), 1960-2000, where the instrument is a *simulated grid* built only from geography and each decade's budget and assigned based on budget.
+
+\begin{alertblock}{Causal interpretation only if}
+\small
+\textbf{Relevance}: met, first-stage $F \approx 25$ \\
+\textbf{Independence}: no time-varying confounder follows the grid (Table 10) \\
+\textbf{Exclusion}: geography affects development only via electricity \\
+\textbf{Monotonicity}: plausible, not discussed
+\end{alertblock}
+
+## Main findings
+
+Preferred IV specification (county and decade FE, Amazon $\times$ decade dummies):
+
+- **Housing values**: +10 pp electrification $\rightarrow$ **+881 reais**. It's a change of +6.8% of the mean value (Table 6).
+- **HDI**: moving from 0 to full electrification $\rightarrow$ **+0.11**. Would move the median county towards the 69th percentile county (Table 7).
+
+Mechanisms: electrification appears to improve development through education and employment gains, with limited evidence that migration explains the results and no effect on health.
+
+## Replication of main results
+
+## Is the design convincing?
+
+\begin{block}{Convincing}
+The instrument simulates electricity expansion using hydropower geography and decade-specific budgets, leaving out local demand. Results remain robust after additional controls for the geographic factors used to construct the instrument (Table 10).
+\end{block}
+
+\begin{alertblock}{Not convincing}
+\textbf{The instrument predicts dams:} they bring construction, roads, flood control and ecosystem change. This could bring positive (or negative!) effects on economic development, unrelated to electrification. Could this risk the exclusion restriction?
+\end{alertblock}
