@@ -21,15 +21,15 @@ library(ggplot2)
 
 ## Research design: ideal benchmark vs. the paper
 
-- **Ideal design**: a lottery decides which feasible areas get the grid now and which wait ten years (cluster-randomized for spillovers).
-- **The paper**: county and decade FE-IV (2SLS), 1960-2000, where the instrument is a *simulated grid* built only from geography and each decade's budget and assigned based on budget.
+- **Ideal design**: Among areas where grid expansion is feasible,a lottery decides which get the grid now and which wait ten years.
+- **The paper**: Builds a county and decade FE-IV (2SLS). The instrument (for actual electricity availability) is a *simulated grid* built from geographic characteristics and each decade's budget.
 
 \begin{alertblock}{Causal interpretation only if}
 \small
-\textbf{Relevance}: met, first-stage $F \approx 25$ \\
-\textbf{Independence}: no time-varying confounder follows the grid (Table 10) \\
-\textbf{Exclusion}: geography affects development only via electricity \\
-\textbf{Monotonicity}: plausible, not discussed
+\textbf{Relevance of the instrument}: met, first-stage $F \approx 25$ > 10. \\
+\textbf{Exogeneity of the instrument}: no relationship between predicted electricity and confounders (Table 10). \\
+\textbf{Exclusion restriction}: geography affects local development only via electrification. \\
+\textbf{Monotonicity}: not discussed but very plausible to hold.
 \end{alertblock}
 
 ## Main findings
@@ -52,3 +52,10 @@ The instrument simulates electricity expansion using hydropower geography and de
 \begin{alertblock}{Not convincing}
 \textbf{The instrument predicts dams:} they bring construction, roads, flood control and ecosystem change. This could bring positive (or negative!) effects on economic development, unrelated to electrification. Could this risk the exclusion restriction?
 \end{alertblock}
+
+## Appendix: Table 6
+
+## Appendix: Table 7
+
+## Appendix: Table 10
+
