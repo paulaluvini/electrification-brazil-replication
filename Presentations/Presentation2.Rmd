@@ -19,38 +19,112 @@ library(ggdag)
 library(ggplot2)
 ```
 
-## Research design: ideal benchmark vs. the paper
 
-- **Ideal design**: Among areas where grid expansion is feasible,a lottery decides which get the grid now and which wait ten years.
-- **The paper**: Builds a county and decade FE-IV (2SLS). The instrument (for actual electricity availability) is a *simulated grid* built from geographic characteristics and each decade's budget.
+## Throwback to the paper's research design
 
-\begin{alertblock}{Causal interpretation only if}
-\small
-\textbf{Relevance of the instrument}: met, first-stage $F \approx 25$ > 10. \\
-\textbf{Exogeneity of the instrument}: no relationship between predicted electricity and confounders (Table 10). \\
-\textbf{Exclusion restriction}: geography affects local development only via electrification. \\
+\textbf{Research question}:  What's the effect of electrification on local economic development in Brazil? 
+
+- The paper relies on a natural experiment design by using an Instrumental Variable on the prediction of electricity availability. 
+
+
+```{r, fig.width=6, fig.height=4, out.width="80%", out.height="50%", fig.align = "center", echo = FALSE}
+coord_dag <- list(
+  x = c(IV = 0.5, X = 1.5, u = 2, y = 2.5),
+  y = c(IV = 0, X = 0, u = 0.3, y = 0)
+)
+
+dag_iv <- ggdag::dagify(X ~ IV,
+                         y ~ X,
+                         X ~ u,
+                         y ~ u,
+                         coords = coord_dag, 
+                        labels = c(
+    IV = "Predicted 
+    electrification",
+    X  = "Electrification",
+    u  = "Confounders",
+    y  = "Development
+    outcomes"
+  ))
+
+ggdag::ggdag(dag_iv, node_size = 20) +
+  ggdag::geom_dag_label_repel(
+    ggplot2::aes(label = label),
+    direction = "x",
+    seed = 1) +
+  theme_void() 
+
+```
+
+
+## Identification strategy: fixed-effects IV (2SLS)
+
+$$\textbf{First stage:}\quad E_{c,t-1} = \alpha^{1}_c + \gamma^{1}_t + \theta\, Z_{c,t-1} + \eta_{ct}$$
+$$\textbf{Second stage:}\quad Y_{ct} = \alpha^{2}_c + \gamma^{2}_t + \beta\, \hat{E}_{c,t-1} + \varepsilon_{ct}$$
+
+\footnotesize
+County $c$, decade $t$, 1960-2000. Electrification is lagged one decade. 
+
+\begin{alertblock}{Causal identification if:}
+\footnotesize
+\vspace{0.3em}
+\textbf{Relevance of the instrument}: met, first-stage $F \approx 25 > 10$. \\[0.4em]
+\textbf{Exogeneity of the instrument}: no relationship between predicted electricity and confounders. \\[0.4em]
+\textbf{Exclusion restriction}: geography affects local development only via electrification. \\[0.4em]
 \textbf{Monotonicity}: not discussed but very plausible to hold.
+\vspace{0.3em}
 \end{alertblock}
 
-## Main findings
+\vfill
+\rule{3cm}{0.4pt}
 
-Preferred IV specification (county and decade FE, Amazon $\times$ decade dummies):
+\tiny
+$E$: proportion of grid points in a county that are electrified in period $t$ \newline
+$Z$: proportion of grid points in a county predicted to be electrified by the model \newline
+$\hat{E}$: instrumented electricity provision, predicted from the first stage
 
+## Main findings and replication
+
+\small
 - **Housing values**: +10 pp electrification $\rightarrow$ **+881 reais**. It's a change of +6.8% of the mean value (Table 6).
 - **HDI**: moving from 0 to full electrification $\rightarrow$ **+0.11**. Would move the median county towards the 69th percentile county (Table 7).
+TABLE
 
-Mechanisms: electrification appears to improve development through education and employment gains, with limited evidence that migration explains the results and no effect on health.
-
-## Replication of main results
-
-## Is the design convincing?
+## Are the results convincing?
 
 \begin{block}{Convincing}
-The instrument simulates electricity expansion using hydropower geography and decade-specific budgets, leaving out local demand. Results remain robust after additional controls for the geographic factors used to construct the instrument (Table 10).
+\small
+- IV simulates electricity expansion leaving out local demand. \\
+- Results are robust after controls for the geographic factors used to construct the IV.
 \end{block}
 
 \begin{alertblock}{Not convincing}
-\textbf{The instrument predicts dams:} they bring construction, roads, flood control and ecosystem change. This could bring positive (or negative!) effects on economic development, unrelated to electrification. Could this risk the exclusion restriction?
+\footnotesize
+\vspace{0.3em}
+\textbf{Omitted variables}: grid may come with package of infrastructure. Only partially addressed as roads are only proxied. \\[0.4em]
+\textbf{Mechanisms}: migration data only for 1990-2000, while most dams were built earlier $\rightarrow$ possible missing variable between X and Y \\[0.4em]
+\textbf{Dam effects}: changes in local hydrology might affect local economic development (flood control) \\[0.4em]
+\textbf{Measurement}: all dams are considered the same size and with a fixed 50 km reach. HDI is the only welfare measure.
+\vspace{0.3em}
+\end{alertblock}
+
+
+## Appendix: Research design: ideal benchmark vs. the paper
+
+\small
+\begin{block}{1. RCT: randomized grid rollout}
+\footnotesize
+Among areas where grid expansion is feasible, a lottery decides which get the grid now and which wait ten years.
+\end{block}
+
+\begin{block}{2. Staggered diff-in-diff}
+\footnotesize
+Valid if construction timing depended on administrative factors unrelated to local growth (parallel trends). Here assignment is not random so is not plausible.
+\end{block}
+
+\begin{alertblock}{2b. Instrumented diff-in-diff (TBD)}
+\footnotesize
+Combine staggered timing with an instrument for when areas are electrified, to deal with endogenous placement. Possible avenue to research.
 \end{alertblock}
 
 ## Appendix: Table 6
