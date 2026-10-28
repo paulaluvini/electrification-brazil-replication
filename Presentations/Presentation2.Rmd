@@ -22,12 +22,13 @@ library(ggplot2)
 
 ## Throwback to the paper's research design
 
+\small
 \textbf{Research question}:  What's the effect of electrification on local economic development in Brazil? 
 
 - The paper relies on a natural experiment design by using an Instrumental Variable on the prediction of electricity availability. 
 
 
-```{r, fig.width=6, fig.height=4, out.width="80%", out.height="50%", fig.align = "center", echo = FALSE}
+```{r, fig.width=6, fig.height=4, out.width="70%", out.height="40%", fig.align = "center", echo = FALSE}
 coord_dag <- list(
   x = c(IV = 0.5, X = 1.5, u = 2, y = 2.5),
   y = c(IV = 0, X = 0, u = 0.3, y = 0)
@@ -56,6 +57,7 @@ ggdag::ggdag(dag_iv, node_size = 20) +
 
 ```
 
+\hyperlink{ideal-design}{\beamergotobutton{Ideal research design}}
 
 ## Identification strategy: fixed-effects IV (2SLS)
 
@@ -83,18 +85,36 @@ $E$: proportion of grid points in a county that are electrified in period $t$ \n
 $Z$: proportion of grid points in a county predicted to be electrified by the model \newline
 $\hat{E}$: instrumented electricity provision, predicted from the first stage
 
-## Main findings and replication
+## Main findings and replication (I)
 
 \small
 - **Housing values**: +10 pp electrification $\rightarrow$ **+881 reais**. It's a change of +6.8% of the mean value (Table 6).
+
+```{r table6-image, out.width="100%", fig.align="center"}
+knitr::include_graphics("../output/table6-replication-withf.png")
+```
+
+\textbf{Note}: R$^2$ in the IV columns differs from the original due to differences in how R (fixest) and Stata compute R$^2$; coefficients are unaffected.
+\hyperlink{orig-table6}{\beamergotobutton{Original Table 6}}
+
+## Main findings and replication (II)
+
+\small
 - **HDI**: moving from 0 to full electrification $\rightarrow$ **+0.11**. Would move the median county towards the 69th percentile county (Table 7).
-TABLE
+
+```{r table7-image, out.width="100%", fig.align="center"}
+knitr::include_graphics("../output/table7-replication-withf.png")
+```
+
+\textbf{Note}: R$^2$ in the IV columns differs from the original due to differences in how R (fixest) and Stata compute R$^2$; coefficients are unaffected.
+\hyperlink{orig-table7}{\beamergotobutton{Original Table 7}}
+
 
 ## Are the results convincing?
 
 \begin{block}{Convincing}
 \small
-- IV simulates electricity expansion leaving out local demand. \\
+- IV uses cost-driven variation in grid expansion, removing demand-driven placement (endogeneity). \\
 - Results are robust after controls for the geographic factors used to construct the IV.
 \end{block}
 
@@ -102,14 +122,16 @@ TABLE
 \footnotesize
 \vspace{0.3em}
 \textbf{Omitted variables}: grid may come with package of infrastructure. Only partially addressed as roads are only proxied. \\[0.4em]
-\textbf{Mechanisms}: migration data only for 1990-2000, while most dams were built earlier $\rightarrow$ possible missing variable between X and Y \\[0.4em]
-\textbf{Dam effects}: changes in local hydrology might affect local economic development (flood control) \\[0.4em]
+\textbf{Mechanisms}: migration data only for 1990-2000, while most dams were built earlier $\rightarrow$ possible missing variable between X and Y. \\[0.4em]
+\textbf{Dam effects}: changes in local hydrology might affect local economic development (flood control). \\[0.4em]
 \textbf{Measurement}: all dams are considered the same size and with a fixed 50 km reach. HDI is the only welfare measure.
 \vspace{0.3em}
 \end{alertblock}
 
 
 ## Appendix: Research design: ideal benchmark vs. the paper
+
+\hypertarget{ideal-design}{}
 
 \small
 \begin{block}{1. RCT: randomized grid rollout}
@@ -127,9 +149,22 @@ Valid if construction timing depended on administrative factors unrelated to loc
 Combine staggered timing with an instrument for when areas are electrified, to deal with endogenous placement. Possible avenue to research.
 \end{alertblock}
 
-## Appendix: Table 6
+\hyperlink{convincing}{\beamerreturnbutton{Back}}
 
-## Appendix: Table 7
+## Appendix: Original table 6
 
-## Appendix: Table 10
+\hypertarget{orig-table6}{}
+
+```{r table6-screen, out.width="100%", fig.align="center"}
+knitr::include_graphics("../data/table6.png")
+```
+
+## Appendix: Original table 7
+
+\hypertarget{orig-table7}{}
+
+```{r table7-screen, out.width="100%", fig.align="center"}
+knitr::include_graphics("../data/table7.png")
+```
+
 
